@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
+import warnings
 
 import pandas as pd
 from PIL import Image, UnidentifiedImageError
@@ -33,6 +34,13 @@ ALLOWED = {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
     ".webp": "image/webp",
+}
+
+EXPECTED_IMAGE_FORMAT = {
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".png": "PNG",
+    ".webp": "WEBP",
 }
 
 
@@ -72,6 +80,13 @@ class BatchUploadService:
             app.config["BATCH_MAX_FILE_BYTES"]
         )
 
+        self.max_image_pixels = int(
+            app.config.get(
+                "BATCH_MAX_IMAGE_PIXELS",
+                25_000_000,
+            )
+        )
+
     def process(
         self,
         files: list[FileStorage],
@@ -84,20 +99,29 @@ class BatchUploadService:
         )
 
         seen_hashes = set()
+        created_paths = []
 
         items = []
         rows = []
 
-        for file in files:
+        try:
+            for file in files:
 
-            item, row = self._process_one(
-                file,
-                image_dir,
-                seen_hashes,
-            )
+                item, row = self._process_one(
+                    file,
+                    image_dir,
+                    seen_hashes,
+                    created_paths,
+                )
 
-            items.append(item)
-            rows.append(row)
+                items.append(item)
+                rows.append(row)
+        except Exception:
+            for created_path in created_paths:
+                created_path.unlink(
+                    missing_ok=True
+                )
+            raise
 
         return BatchUploadResult(
             items=items,
@@ -109,6 +133,7 @@ class BatchUploadService:
         file,
         image_dir,
         seen_hashes,
+        created_paths,
     ):
 
         original = (
@@ -179,17 +204,44 @@ class BatchUploadService:
         if error is None:
 
             try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter(
+                        "error",
+                        Image.DecompressionBombWarning,
+                    )
 
-                with Image.open(
-                    io.BytesIO(data)
-                ) as image:
+                    with Image.open(
+                        io.BytesIO(data)
+                    ) as image:
+                        detected_format = (
+                            image.format or ""
+                        ).upper()
+                        width, height = image.size
+                        image.verify()
 
-                    image.verify()
+                expected_format = (
+                    EXPECTED_IMAGE_FORMAT[
+                        extension
+                    ]
+                )
+
+                if detected_format != expected_format:
+                    error = (
+                        "Decoded image format does not "
+                        "match file extension"
+                    )
+                elif width * height > self.max_image_pixels:
+                    error = (
+                        "Image exceeds maximum pixel "
+                        f"count of {self.max_image_pixels}"
+                    )
 
             except (
                 UnidentifiedImageError,
                 OSError,
                 ValueError,
+                Image.DecompressionBombWarning,
+                Image.DecompressionBombError,
             ):
                 error = (
                     "Uploaded file is not "
@@ -217,6 +269,9 @@ class BatchUploadService:
             else:
 
                 destination.write_bytes(data)
+                created_paths.append(
+                    destination
+                )
 
                 path = str(destination)
 

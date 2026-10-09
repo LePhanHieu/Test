@@ -153,8 +153,14 @@ def database_config():
         "BATCH_MAX_FILE_BYTES":
             10 * 1024 * 1024,
 
+        "BATCH_MAX_IMAGE_PIXELS":
+            25_000_000,
+
         "MAX_CONTENT_LENGTH":
-            10 * 1024 * 1024,
+            (
+                20 * 10 * 1024 * 1024
+                + 1024 * 1024
+            ),
 
         # ====================================================
         # SESSION
