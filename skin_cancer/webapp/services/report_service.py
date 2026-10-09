@@ -5,6 +5,9 @@ from html import escape
 import os
 from pathlib import Path
 import re
+from uuid import uuid4
+
+from sqlalchemy.exc import IntegrityError
 
 from reportlab.graphics.shapes import (
     Drawing,
@@ -149,6 +152,8 @@ DISCLAIMER = (
 
 class ReportService:
 
+    VERSION_RETRY_LIMIT = 5
+
     def __init__(
         self,
         app,
@@ -192,13 +197,6 @@ class ReportService:
         generated_by,
     ):
 
-        version = (
-            self._next_version(
-                case.id
-            )
-        )
-
-
         safe_case_code = re.sub(
             r"[^A-Za-z0-9_-]+",
             "_",
@@ -213,95 +211,119 @@ class ReportService:
             )
 
 
-        relative_path = (
-            Path(
-                safe_case_code
-            )
-            /
-            f"report_v{version}.pdf"
-        )
-
-
-        pdf_path = (
-            self.report_root
-            /
-            relative_path
-        ).resolve()
-
-
-        if (
-            self.report_root
-            not in pdf_path.parents
+        for attempt in range(
+            self.VERSION_RETRY_LIMIT
         ):
 
-            raise ValueError(
-                "Đường dẫn lưu báo cáo "
-                "không hợp lệ."
+            version = self._next_version(
+                case.id
             )
 
-
-        pdf_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-
-        try:
-
-            self._build_pdf(
-                pdf_path,
-                case,
-                analysis,
-                version,
+            relative_path = (
+                Path(safe_case_code)
+                / f"report_v{version}.pdf"
             )
 
+            pdf_path = (
+                self.report_root
+                / relative_path
+            ).resolve()
 
-            report = Report(
+            if self.report_root not in pdf_path.parents:
+                raise ValueError(
+                    "Đường dẫn lưu báo cáo "
+                    "không hợp lệ."
+                )
 
-                case_id=
-                    case.id,
+            pdf_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
 
-                analysis_id=
-                    (
+            temporary_path = (
+                pdf_path.parent
+                / (
+                    f".{pdf_path.stem}."
+                    f"{uuid4().hex}.tmp.pdf"
+                )
+            )
+
+            report = None
+            committed = False
+
+            try:
+                self._build_pdf(
+                    temporary_path,
+                    case,
+                    analysis,
+                    version,
+                )
+
+                report = Report(
+                    case_id=case.id,
+                    analysis_id=(
                         analysis.id
                         if analysis
                         else None
                     ),
+                    pdf_path=relative_path.as_posix(),
+                    generated_by=generated_by.id,
+                    report_version=version,
+                )
 
-                pdf_path=
-                    relative_path
-                    .as_posix(),
+                db.session.add(report)
+                db.session.commit()
+                committed = True
 
-                generated_by=
-                    generated_by.id,
+                os.replace(
+                    temporary_path,
+                    pdf_path,
+                )
 
-                report_version=
-                    version,
-            )
+                return report
 
+            except IntegrityError as exc:
+                db.session.rollback()
+                temporary_path.unlink(
+                    missing_ok=True
+                )
 
-            db.session.add(
-                report
-            )
+                if (
+                    self._is_version_conflict(exc)
+                    and attempt + 1
+                    < self.VERSION_RETRY_LIMIT
+                ):
+                    continue
 
+                raise
 
-            db.session.commit()
+            except Exception:
+                db.session.rollback()
+                temporary_path.unlink(
+                    missing_ok=True
+                )
 
+                if committed and report is not None:
+                    db.session.delete(report)
+                    db.session.commit()
 
-            return report
+                raise
 
+        raise RuntimeError(
+            "Không thể cấp phiên bản báo cáo."
+        )
 
-        except Exception:
-
-            db.session.rollback()
-
-
-            pdf_path.unlink(
-                missing_ok=True
-            )
-
-
-            raise
+    @staticmethod
+    def _is_version_conflict(error):
+        message = str(
+            getattr(error, "orig", error)
+        ).lower()
+        return (
+            "reports.case_id"
+            in message
+            and "report_version"
+            in message
+        )
 
 
     # ========================================================
@@ -1453,7 +1475,11 @@ class ReportService:
                     review,
 
                 doctor=
-                    case.doctor,
+                    (
+                        review.doctor
+                        if review
+                        else case.doctor
+                    ),
             )
         )
 
