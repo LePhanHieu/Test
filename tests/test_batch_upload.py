@@ -102,3 +102,30 @@ def test_exception_during_batch_removes_files_created_by_that_batch(
 
     image_dir = Path(app.config["UPLOAD_FOLDER"]) / "images"
     assert list(image_dir.glob("*")) == []
+
+
+def test_partial_disk_write_is_removed_without_touching_unrelated_files(
+    app, users, case_graph, monkeypatch
+):
+    image_dir = Path(app.config["UPLOAD_FOLDER"]) / "images"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    sentinel = image_dir / "unrelated.jpg"
+    sentinel.write_bytes(b"keep")
+    real_write_bytes = Path.write_bytes
+
+    def partial_write_then_fail(path, data):
+        real_write_bytes(path, data[:13])
+        raise OSError("simulated partial disk write")
+
+    monkeypatch.setattr(Path, "write_bytes", partial_write_then_fail)
+
+    with app.app_context():
+        service = service_for(app, users, case_graph)
+        with pytest.raises(OSError, match="partial disk write"):
+            service.process(
+                [uploaded_file(image_bytes("PNG"), "partial.png", "image/png")]
+            )
+        db.session.rollback()
+
+    assert sentinel.read_bytes() == b"keep"
+    assert list(image_dir.iterdir()) == [sentinel]

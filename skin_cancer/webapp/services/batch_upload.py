@@ -288,10 +288,10 @@ class BatchUploadService:
 
             else:
 
-                destination.write_bytes(data)
                 created_paths.append(
                     destination
                 )
+                destination.write_bytes(data)
 
                 path = str(destination)
 

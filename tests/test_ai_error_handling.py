@@ -60,6 +60,27 @@ def test_ai_error_response_does_not_expose_exception_detail():
     assert "mark_analysis_failed(" in source
 
 
+def test_ai_error_handler_passes_scalar_case_image_id():
+    function = _analyze_function()
+    handler = next(
+        handler
+        for node in function.body
+        if isinstance(node, ast.Try)
+        for handler in node.handlers
+        if isinstance(handler.type, ast.Name) and handler.type.id == "Exception"
+    )
+    call = next(
+        node
+        for node in ast.walk(handler)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "mark_analysis_failed"
+    )
+
+    assert isinstance(call.args[1], ast.Name)
+    assert call.args[1].id == "case_image_id"
+
+
 def test_mark_analysis_failed_persists_audit_state(app, users, case_graph):
     spec = importlib.util.find_spec("skin_cancer.webapp.services.ai_analysis")
     assert spec is not None

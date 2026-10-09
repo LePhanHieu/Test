@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Event
+import os
 
 from reportlab.platypus import Spacer
 
@@ -80,3 +81,61 @@ def test_pdf_diagnosis_uses_the_persisted_review_author(
         "review_id": review.id,
         "doctor_name": "Admin A",
     }
+
+
+def test_report_metadata_is_not_visible_before_pdf_publication(
+    app, users, case_graph, monkeypatch
+):
+    publication_started = Event()
+    allow_publication = Event()
+    real_replace = os.replace
+    real_link = os.link
+
+    def pause_before(real_publish):
+        def publish(*args, **kwargs):
+            publication_started.set()
+            assert allow_publication.wait(timeout=5)
+            return real_publish(*args, **kwargs)
+
+        return publish
+
+    monkeypatch.setattr(os, "replace", pause_before(real_replace))
+    monkeypatch.setattr(os, "link", pause_before(real_link))
+    monkeypatch.setattr(
+        ReportService,
+        "_build_pdf",
+        lambda _service, path, _case, _analysis, version: Path(path).write_bytes(
+            f"report version {version}".encode()
+        ),
+    )
+
+    def generate_once():
+        with app.app_context():
+            case = db.session.get(Case, case_graph["own"]["case_id"])
+            analysis = db.session.get(
+                Analysis, case_graph["own"]["analysis_id"]
+            )
+            doctor = db.session.get(User, users["doctor"])
+            try:
+                return ReportService(app).generate(case, analysis, doctor).id
+            finally:
+                db.session.remove()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(generate_once)
+        assert publication_started.wait(timeout=5)
+        with app.app_context():
+            visible_report = db.session.scalar(
+                db.select(Report).where(
+                    Report.case_id == case_graph["own"]["case_id"],
+                    Report.report_version == 2,
+                )
+            )
+            db.session.remove()
+        allow_publication.set()
+        report_id = future.result(timeout=5)
+
+    assert visible_report is None
+    with app.app_context():
+        report = db.session.get(Report, report_id)
+        assert (Path(app.config["REPORT_FOLDER"]) / report.pdf_path).is_file()

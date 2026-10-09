@@ -5,6 +5,7 @@ from html import escape
 import os
 from pathlib import Path
 import re
+import time
 from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError
@@ -248,7 +249,7 @@ class ReportService:
             )
 
             report = None
-            committed = False
+            published = False
 
             try:
                 self._build_pdf(
@@ -257,6 +258,15 @@ class ReportService:
                     analysis,
                     version,
                 )
+
+                # Publish without replacing an existing version. The file is
+                # ready before its metadata becomes visible to other sessions.
+                os.link(
+                    temporary_path,
+                    pdf_path,
+                )
+                published = True
+                temporary_path.unlink()
 
                 report = Report(
                     case_id=case.id,
@@ -272,20 +282,33 @@ class ReportService:
 
                 db.session.add(report)
                 db.session.commit()
-                committed = True
-
-                os.replace(
-                    temporary_path,
-                    pdf_path,
-                )
 
                 return report
+
+            except FileExistsError:
+                db.session.rollback()
+                temporary_path.unlink(
+                    missing_ok=True
+                )
+
+                if (
+                    attempt + 1
+                    < self.VERSION_RETRY_LIMIT
+                ):
+                    time.sleep(0.02)
+                    continue
+
+                raise
 
             except IntegrityError as exc:
                 db.session.rollback()
                 temporary_path.unlink(
                     missing_ok=True
                 )
+                if published:
+                    pdf_path.unlink(
+                        missing_ok=True
+                    )
 
                 if (
                     self._is_version_conflict(exc)
@@ -301,10 +324,10 @@ class ReportService:
                 temporary_path.unlink(
                     missing_ok=True
                 )
-
-                if committed and report is not None:
-                    db.session.delete(report)
-                    db.session.commit()
+                if published:
+                    pdf_path.unlink(
+                        missing_ok=True
+                    )
 
                 raise
 

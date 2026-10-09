@@ -18,6 +18,10 @@ from skin_cancer.webapp.services.access import (
     visible_case_or_404,
 )
 from skin_cancer.webapp.services.ai_analysis import mark_analysis_failed
+from skin_cancer.webapp.services.image_upload import (
+    UploadTooLarge,
+    read_limited_upload,
+)
 from skin_cancer.webapp.extensions import db, limiter
 from skin_cancer.webapp.models import (
     CaseImage,
@@ -573,9 +577,26 @@ def predict():
 
         try:
 
+            image_data = read_limited_upload(
+                file.stream,
+                int(
+                    app.config[
+                        "BATCH_MAX_FILE_BYTES"
+                    ]
+                ),
+            )
+
             pil_img = Image.open(
-                file.stream
+                io.BytesIO(image_data)
             ).convert("RGB")
+
+        except UploadTooLarge as exc:
+
+            return jsonify(
+                {
+                    "error": str(exc)
+                }
+            ), 413
 
         except (
             UnidentifiedImageError,
@@ -857,7 +878,7 @@ def analyze_case_image(
 
         mark_analysis_failed(
             analysis_id,
-            case_image.id,
+            case_image_id,
             exc,
         )
 
