@@ -11,7 +11,7 @@ from flask import (
 )
 from flask_login import current_user
 
-from ..extensions import db
+from ..extensions import db, limiter
 from ..models import UploadBatch
 from ..services.access import (
     require_roles,
@@ -31,6 +31,9 @@ bp = Blueprint(
 
 @bp.post(
     "/cases/<int:case_id>/upload-batch"
+)
+@limiter.limit(
+    lambda: current_app.config["RATELIMIT_EXPENSIVE"]
 )
 @require_roles("ADMIN", "DOCTOR")
 def upload_batch(case_id):

@@ -1,7 +1,7 @@
-from flask import Blueprint, request, jsonify, session, abort
+from flask import Blueprint, current_app, request, jsonify, session, abort
 from flask_login import current_user, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
-from ..extensions import db, login_manager
+from ..extensions import db, limiter, login_manager
 from ..models import User
 from ..services.access import require_roles
 
@@ -32,6 +32,9 @@ def get_csrf():
 
 
 @bp.post('/login')
+@limiter.limit(
+    lambda: current_app.config["RATELIMIT_LOGIN"]
+)
 def login():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):

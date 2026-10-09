@@ -179,6 +179,40 @@ def database_config():
             ),
 
         # ====================================================
+        # RATE LIMITING
+        # ====================================================
+
+        "RATELIMIT_ENABLED":
+            _env_bool(
+                "RATELIMIT_ENABLED",
+                True,
+            ),
+
+        "RATELIMIT_STORAGE_URI":
+            os.getenv(
+                "RATELIMIT_STORAGE_URI",
+                "memory://",
+            ).strip(),
+
+        "RATELIMIT_LOGIN":
+            os.getenv(
+                "RATELIMIT_LOGIN",
+                "5 per minute",
+            ).strip(),
+
+        "RATELIMIT_EXPENSIVE":
+            os.getenv(
+                "RATELIMIT_EXPENSIVE",
+                "30 per hour",
+            ).strip(),
+
+        "RATELIMIT_REPORT":
+            os.getenv(
+                "RATELIMIT_REPORT",
+                "20 per hour",
+            ).strip(),
+
+        # ====================================================
         # DEMO
         # ====================================================
 

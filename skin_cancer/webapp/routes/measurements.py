@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Blueprint, abort, current_app, jsonify, send_file
-from ..extensions import db
+from ..extensions import db, limiter
 from ..models import Analysis
 from ..services.access import require_roles, visible_case_or_404
 from ..services.measurement_service import MeasurementService
@@ -65,6 +65,9 @@ def measurement_json(analysis, result=None):
 
 
 @bp.post('/analyses/<int:analysis_id>/measure')
+@limiter.limit(
+    lambda: current_app.config["RATELIMIT_EXPENSIVE"]
+)
 @require_roles('ADMIN', 'DOCTOR')
 def measure_analysis(analysis_id):
     analysis = db.session.get(Analysis, analysis_id)

@@ -3,13 +3,13 @@ from flask import jsonify, request
 from flask_wtf.csrf import CSRFError
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
-from .extensions import db, login_manager, csrf, mail
+from .extensions import db, login_manager, csrf, limiter
 
 
 def register_database_api(app):
     login_manager.init_app(app)
     csrf.init_app(app)
-    mail.init_app(app)
+    limiter.init_app(app)
     from .routes.auth import bp as auth_bp
     from .routes.cases import bp as cases_bp
     from .routes.reports import bp as reports_bp

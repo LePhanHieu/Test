@@ -18,7 +18,7 @@ from skin_cancer.webapp.services.access import (
     visible_case_or_404,
 )
 from skin_cancer.webapp.services.ai_analysis import mark_analysis_failed
-from skin_cancer.webapp.extensions import db
+from skin_cancer.webapp.extensions import db, limiter
 from skin_cancer.webapp.models import (
     CaseImage,
     Analysis,
@@ -32,7 +32,7 @@ import torch.nn as nn
 import timm
 import numpy as np
 from PIL import Image, UnidentifiedImageError
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, current_app, render_template, request, jsonify
 from flask_cors import CORS
 from torchvision import transforms
 from pytorch_grad_cam import GradCAM
@@ -540,6 +540,9 @@ def health():
     "/predict",
     methods=["POST"],
 )
+@limiter.limit(
+    lambda: current_app.config["RATELIMIT_EXPENSIVE"]
+)
 @require_roles("ADMIN", "DOCTOR")
 def predict():
 
@@ -599,7 +602,9 @@ def predict():
 
     except Exception:
 
-        traceback.print_exc()
+        app.logger.exception(
+            "Direct AI prediction failed"
+        )
 
         return jsonify(
             {
@@ -613,6 +618,9 @@ def predict():
     "/api/case-images/"
     "<int:case_image_id>/analyze",
     methods=["POST"],
+)
+@limiter.limit(
+    lambda: current_app.config["RATELIMIT_EXPENSIVE"]
 )
 @require_roles("ADMIN", "DOCTOR")
 def analyze_case_image(

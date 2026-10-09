@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user
 
+from ..extensions import limiter
 from ..services.access import require_roles
 from ..services.email_service import (EmailService, INVALID_EMAIL, MISSING_PDF,
                                       UNSAFE_PDF)
@@ -11,6 +12,9 @@ bp = Blueprint('report_email', __name__, url_prefix='/api/reports')
 
 
 @bp.post('/<int:report_id>/email')
+@limiter.limit(
+    lambda: current_app.config["RATELIMIT_EXPENSIVE"]
+)
 @require_roles('ADMIN', 'DOCTOR')
 def send_report_email(report_id):
     report = get_visible_report(report_id)

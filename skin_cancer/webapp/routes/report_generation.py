@@ -1,9 +1,10 @@
-from flask import Blueprint, abort, current_app, jsonify, request
+from flask import Blueprint, abort, current_app, jsonify
 from flask_login import current_user
 
-from ..extensions import db
+from ..extensions import db, limiter
 from ..models import Analysis
 from ..services.access import require_roles, visible_case_or_404
+from ..services.api_validation import json_object_or_400
 from ..services.report_service import ReportService
 
 
@@ -11,10 +12,13 @@ bp = Blueprint('report_generation', __name__, url_prefix='/api')
 
 
 @bp.post('/cases/<int:case_id>/reports')
+@limiter.limit(
+    lambda: current_app.config["RATELIMIT_REPORT"]
+)
 @require_roles('ADMIN', 'DOCTOR')
 def create_report(case_id):
     case = visible_case_or_404(case_id)
-    payload = request.get_json(silent=True) or {}
+    payload = json_object_or_400()
     analysis_id = payload.get('analysis_id')
     if type(analysis_id) is not int or analysis_id <= 0:
         abort(400, description='Cần cung cấp analysis_id hợp lệ')

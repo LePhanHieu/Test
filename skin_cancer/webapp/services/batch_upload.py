@@ -43,6 +43,26 @@ EXPECTED_IMAGE_FORMAT = {
     ".webp": "WEBP",
 }
 
+SPREADSHEET_FORMULA_PREFIXES = (
+    "=",
+    "+",
+    "-",
+    "@",
+    "\t",
+    "\r",
+)
+
+
+def spreadsheet_safe(value):
+    if (
+        isinstance(value, str)
+        and value.startswith(
+            SPREADSHEET_FORMULA_PREFIXES
+        )
+    ):
+        return f"'{value}"
+    return value
+
 
 @dataclass
 class BatchUploadResult:
@@ -394,8 +414,16 @@ class BatchUploadService:
             exist_ok=True,
         )
 
+        safe_rows = [
+            {
+                key: spreadsheet_safe(value)
+                for key, value in row.items()
+            }
+            for row in rows
+        ]
+
         pd.DataFrame.from_records(
-            rows,
+            safe_rows,
             columns=CSV_COLUMNS,
         ).to_csv(
             output,
