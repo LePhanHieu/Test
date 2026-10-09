@@ -126,7 +126,6 @@ def generate_interpretation(p_malig, pred_class, probs_dict):
     """Sinh thông điệp diễn giải bằng tiếng Việt dựa trên xác suất."""
 
     info = CLASS_INFO[pred_class]
-    is_malignant = p_malig > 0.5
     confidence = probs_dict[pred_class] * 100
 
     # Phân loại mức độ
@@ -886,7 +885,7 @@ if __name__ == '__main__':
     print()
     print("=" * 62)
     print("  DERMASCAN AI - MÁY CHỦ ĐANG CHẠY")
-    print(f"  Địa chỉ :  http://localhost:5000")
+    print("  Địa chỉ :  http://localhost:5000")
     print(f"  Thiết bị:  {DEVICE}")
     print("=" * 62)
     print()

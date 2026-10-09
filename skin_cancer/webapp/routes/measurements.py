@@ -11,6 +11,31 @@ from ..services.measurement_service import MeasurementService
 bp = Blueprint('measurements', __name__, url_prefix='/api')
 
 
+def _delete_replaced_contour(path):
+    if not path:
+        return
+
+    measurement_root = Path(
+        current_app.config['MEASUREMENT_FOLDER']
+    ).resolve()
+    candidate = Path(path).resolve()
+    if measurement_root not in candidate.parents:
+        current_app.logger.warning(
+            "Skipped contour cleanup outside measurement root: %s",
+            candidate,
+        )
+        return
+
+    try:
+        candidate.unlink(missing_ok=True)
+    except OSError:
+        current_app.logger.warning(
+            "Could not remove replaced contour: %s",
+            candidate,
+            exc_info=True,
+        )
+
+
 def measurement_json(analysis, result=None):
     return {
         "analysis_id": analysis.id,
@@ -75,6 +100,7 @@ def measure_analysis(analysis_id):
         abort(404)
     case = visible_case_or_404(analysis.case_id)
     image = analysis.image
+    previous_contour_path = analysis.contour_path
     result = None
     try:
         analysis.status = 'PROCESSING'
@@ -109,6 +135,10 @@ def measure_analysis(analysis_id):
             analysis.bbox_height = None
             analysis.contour_path = None
         db.session.commit()
+        if previous_contour_path != analysis.contour_path:
+            _delete_replaced_contour(
+                previous_contour_path
+            )
     except Exception:
         db.session.rollback()
         if result and result.contour_path:
