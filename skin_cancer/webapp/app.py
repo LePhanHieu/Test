@@ -4,7 +4,6 @@ EfficientNet-B0 skin cancer classification
 """
 import io
 import base64
-import traceback
 from pathlib import Path
 
 # Database/auth bootstrap; keep python app.py working from the webapp directory.
@@ -18,6 +17,7 @@ from skin_cancer.webapp.services.access import (
     require_roles,
     visible_case_or_404,
 )
+from skin_cancer.webapp.services.ai_analysis import mark_analysis_failed
 from skin_cancer.webapp.extensions import db
 from skin_cancer.webapp.models import (
     CaseImage,
@@ -127,7 +127,7 @@ def generate_interpretation(p_malig, pred_class, probs_dict):
 
     info = CLASS_INFO[pred_class]
     is_malignant = p_malig > 0.5
-    confidence = max(p_malig, 1 - p_malig) * 100
+    confidence = probs_dict[pred_class] * 100
 
     # Phân loại mức độ
     if p_malig >= 0.85:
@@ -688,6 +688,7 @@ def analyze_case_image(
     )
 
     gradcam_path = None
+    analysis_id = None
 
     try:
 
@@ -700,6 +701,9 @@ def analyze_case_image(
         )
 
         db.session.flush()
+
+        analysis_id = analysis.id
+        db.session.commit()
 
         try:
 
@@ -844,7 +848,11 @@ def analyze_case_image(
 
     except Exception as exc:
 
-        db.session.rollback()
+        mark_analysis_failed(
+            analysis_id,
+            case_image.id,
+            exc,
+        )
 
         if gradcam_path:
             Path(
@@ -853,16 +861,16 @@ def analyze_case_image(
                 missing_ok=True
             )
 
-        traceback.print_exc()
+        app.logger.exception(
+            "AI analysis failed for case image %s",
+            case_image.id,
+        )
 
         return jsonify(
             {
                 "error":
                     "Không thể phân tích "
                     "ảnh đã upload.",
-
-                "detail":
-                    str(exc),
             }
         ), 500
 
