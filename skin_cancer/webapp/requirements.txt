@@ -1,0 +1,3 @@
+# Compatibility manifest for installations started from this legacy folder.
+# The canonical dependency list is maintained at the project root.
+-r ../../requirements.txt
