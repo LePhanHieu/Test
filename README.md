@@ -10,12 +10,13 @@ User/Doctor/Admin.
 ## Trạng thái project
 
 - Database/API: SQLite + Flask-SQLAlchemy + Flask-Migrate.
-- Batch upload: JPG/JPEG/PNG/WEBP, UUID filename, tối đa 20 ảnh/batch và
-  10 MiB/file, trạng thái từng ảnh, CSV Pandas.
+- Batch upload: JPG/JPEG/PNG/WEBP, UUID filename, tối đa 20 ảnh/batch,
+  10 MiB/file và 25 triệu pixel/ảnh, trạng thái từng ảnh, CSV Pandas.
 - Measurement: OpenCV threshold/morphology/contour/bounding box, chỉ dùng đơn vị
   pixel khi chưa có calibration.
 - Report: ReportLab, dữ liệu thật từ database, version `v1`, `v2`, `v3`, file
-  nằm ngoài database trong `instance/reports/`.
+  nằm ngoài database trong `instance/reports/`. Có thể tạo report trước Doctor
+  Review; PDF sẽ hiển thị rõ trạng thái chưa có chẩn đoán.
 - Email: Flask-Mail/SMTP, cấu hình từ `.env`, log `PENDING/SENT/FAILED`.
 - Homepage: slide và site settings lấy từ database; slide tự chuyển và có empty state.
 - Schema hiện tại gồm 11 bảng nghiệp vụ, không cần migration mới cho các phase trên.
@@ -34,12 +35,13 @@ User/Doctor/Admin.
 │   │   ├── templates/             # Homepage shell
 │   │   ├── static/                # CSS/JavaScript
 │   │   └── assets/                # Asset dùng chung
-│   ├── checkpoints/               # best_binary.pth, best_multiclass.pth
-│   └── test_examples/             # Ảnh mẫu development
+│   ├── notebooks/                 # Nghiên cứu, huấn luyện và phân tích local
+│   ├── class_weights_bin.pt       # Class weights được version control
+│   └── class_weights_mc.pt
 ├── src/                           # Training/inference utilities cũ
 ├── migrations/                    # Alembic/Flask-Migrate
-├── tests/                         # Unit, route, migration và access tests
-├── artifacts/                     # Kết quả kiểm tra/demo đã lưu
+├── tests/                         # Regression, route, migration và access tests
+├── test_images/                   # Ảnh mẫu development
 ├── instance/                      # DB và file private sinh lúc chạy; không commit
 ├── requirements.txt               # Dependency đầy đủ, gồm AI + database
 ├── requirements-database.txt      # Runtime database/API nhẹ hơn
@@ -53,7 +55,8 @@ PDF, SMTP password hoặc database local lên repository.
 
 ## Database schema
 
-Migration hiện tại: `e8e27e26f978_phase_1_eleven_database_tables.py`.
+Migration head hiện tại: `9d731c80a1f2_add_patient_snapshot.py`, kế tiếp
+`e8e27e26f978_phase_1_eleven_database_tables.py`.
 
 | Bảng | Nội dung chính |
 |---|---|
@@ -90,6 +93,9 @@ Case của mình; `DOCTOR` chỉ truy cập Case được giao; `ADMIN` có ph�
 | GET | `/api/cases/<case_id>` | Theo quyền Case |
 | GET | `/api/users/<user_id>/cases` | Theo ownership/role |
 | GET | `/api/analyses/<analysis_id>` | Theo quyền Case |
+| GET | `/api/analyses/<analysis_id>/review` | Theo quyền Case |
+| POST | `/api/analyses/<analysis_id>/review` | Doctor phụ trách/Admin |
+| POST | `/api/analyses/<analysis_id>/review/draft` | Doctor phụ trách/Admin |
 | GET | `/api/reviews/<review_id>` | Theo quyền Case |
 
 ### Upload, measurement, report và email
@@ -99,6 +105,7 @@ Case của mình; `DOCTOR` chỉ truy cập Case được giao; `ADMIN` có ph�
 | POST | `/api/cases/<case_id>/upload-batch` | Doctor/Admin |
 | GET | `/api/upload-batches/<batch_id>/csv` | Doctor phụ trách/Admin |
 | POST | `/api/analyses/<analysis_id>/measure` | Doctor phụ trách/Admin |
+| GET | `/api/analyses/<analysis_id>/contour` | Theo quyền Case |
 | POST | `/api/cases/<case_id>/reports` | Doctor phụ trách/Admin |
 | GET | `/api/reports/<report_id>` | Theo quyền Case |
 | GET | `/api/reports/<report_id>/download` | Theo quyền Case |
@@ -130,12 +137,14 @@ Khi chạy `skin_cancer.webapp.app`, ngoài các API database còn có:
 | GET | `/` | Public |
 | GET | `/health` | Public |
 | POST | `/predict` | Doctor/Admin + CSRF + AI dependencies/checkpoints |
+| POST | `/api/case-images/<case_image_id>/analyze` | Doctor phụ trách/Admin + CSRF + AI dependencies/checkpoints |
 
 ## Dependency list
 
 - Python 3.11 hoặc 3.12.
 - Database/API: Flask 3.1, Flask-SQLAlchemy, SQLAlchemy, Flask-Migrate,
-  Flask-Login, Flask-WTF, Flask-Mail, python-dotenv, pandas, OpenCV, ReportLab.
+  Flask-Login, Flask-WTF, Flask-Mail, Flask-Limiter, python-dotenv, pandas,
+  OpenCV, ReportLab.
 - AI/training: PyTorch, torchvision, timm, NumPy, Pillow, pytorch-grad-cam,
   scikit-learn, matplotlib, seaborn, gradio, tqdm.
 - Test: pytest.
@@ -181,6 +190,8 @@ SESSION_COOKIE_SECURE=false
 
 Không commit `.env`. Khi triển khai HTTPS, đặt `SESSION_COOKIE_SECURE=true`.
 Cấu hình SMTP chỉ đặt trong `.env`; không ghi username/password vào source.
+Khi chạy nhiều worker, đổi `RATELIMIT_STORAGE_URI` từ `memory://` sang backend
+dùng chung như Redis; memory storage chỉ phù hợp local development và test.
 
 Muốn chạy `/predict` và AI runtime, cài thêm dependency đầy đủ:
 
@@ -259,10 +270,11 @@ python -m compileall -q skin_cancer src tests
 node --check skin_cancer/webapp/static/js/main.js
 ```
 
-Test bao phủ migration/foreign key, password hash, authentication/authorization,
-IDOR giữa User, upload nhiều ảnh, file lỗi/trùng/quá lớn, CSV, OpenCV measurement,
-PDF versioning/missing assets, email failure, CRUD slides, carousel hooks và site
-settings fallback.
+Test hiện có bao phủ migration/schema drift, password hash, CSRF,
+authentication/authorization, IDOR giữa User/Doctor, temporary patient snapshot,
+PDF concurrency và reviewer attribution, AI interpretation/failure audit, upload
+format/size/pixel/cleanup, CSV formula injection, JSON validation, rate limiting và
+vòng đời contour khi đo lại.
 
 ## Kiểm tra migration và database thủ công
 
@@ -284,20 +296,19 @@ connection.close()
 
 ## Limitations hiện tại
 
-1. Batch upload hiện lưu ảnh và CSV; chưa tự nối thành pipeline inference/Grad-CAM
-   và chưa tự tạo `Analysis`/`AnalysisResult` cho từng ảnh.
-2. `/predict` legacy trả kết quả inference/Grad-CAM trực tiếp; chưa persist toàn bộ
-   kết quả đó vào database.
-3. API hiện có endpoint đọc Doctor Review nhưng chưa có endpoint ghi review; test
-   tạo fixture trực tiếp trong database.
-4. Measurement chỉ là pixel (`px`, `px²`, fraction), chưa quy đổi sang mm khi
+1. Batch upload và AI analysis là hai bước riêng; client gọi endpoint analyze cho
+   từng `CaseImage` sau khi upload thay vì tự động chạy model cho toàn batch.
+2. `/predict` legacy trả kết quả inference/Grad-CAM trực tiếp; endpoint này không
+   persist kết quả. Dùng `/api/case-images/<id>/analyze` cho workflow database.
+3. Measurement chỉ là pixel (`px`, `px²`, fraction), chưa quy đổi sang mm khi
    chưa có calibration.
-5. AI runtime cần PyTorch, checkpoint và môi trường phù hợp; test database nhẹ
+4. AI runtime cần PyTorch, checkpoint và môi trường phù hợp; test database nhẹ
    không load PyTorch. Không xem việc test database là xác nhận inference y tế.
-6. Chưa có rate limiting, WSGI deployment profile, security headers đầy đủ hoặc
-   browser end-to-end test.
-7. SMTP thật phụ thuộc cấu hình nhà cung cấp; test dùng service isolation/monkeypatch
-   để kiểm tra trạng thái thành công và thất bại mà không gửi email thật.
+5. Rate limiting dùng memory storage mặc định; production nhiều worker cần shared
+   storage. Repository chưa cung cấp WSGI deployment profile, security headers đầy
+   đủ hoặc browser end-to-end test.
+6. SMTP thật phụ thuộc cấu hình nhà cung cấp và chưa được kiểm chứng trong CI/local
+   test suite hiện tại.
 
 ## Medical disclaimer
 

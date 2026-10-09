@@ -474,25 +474,6 @@ function focusDoctorDiagnosis() {
   );
 }
 
-async function hasSavedDoctorDiagnosis() {
-  if (!currentAnalysisId) {
-    return false;
-  }
-
-  try {
-    const review = await loadDoctorReview();
-
-    return Boolean(
-      review &&
-      review.review_status === "REVIEWED" &&
-      (review.doctor_conclusion || "").trim(),
-    );
-  } catch (error) {
-    console.error(error);
-
-    return false;
-  }
-}
 // ============================================================
 // LOGGED OUT PATIENT STATE
 // ============================================================
@@ -2260,18 +2241,6 @@ measureBtn.addEventListener("click", async () => {
 exportPdfBtn.addEventListener("click", async () => {
   if (!currentCaseId || !currentAnalysisId) {
     alert("Chưa có Case hoặc Analysis.");
-    return;
-  }
-
-  // ================================================
-  // REQUIRE DOCTOR DIAGNOSIS
-  // ================================================
-
-  const hasDiagnosis = await hasSavedDoctorDiagnosis();
-
-  if (!hasDiagnosis) {
-    alert("Chưa có chẩn đoán của bác sĩ");
-    focusDoctorDiagnosis();
     return;
   }
 

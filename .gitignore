@@ -19,6 +19,7 @@ __pycache__/
 
 # ============ IDE ============
 .worktrees/
+.superpowers/
 .vscode/
 .idea/
 *.swp
@@ -41,7 +42,6 @@ instance/
 *.db-journal
 *.db-shm
 *.db-wal
-.pytest_cache/
 .ruff_cache/
 .mypy_cache/
 .coverage
@@ -49,3 +49,6 @@ coverage.xml
 htmlcov/
 build/
 dist/
+
+# Model checkpoints are deployment artifacts; keep tracked class weights intact.
+skin_cancer/checkpoints/*.pth
