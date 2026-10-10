@@ -278,7 +278,7 @@ def test_analysis_csv_empty_batch_has_headers(app, client, users, case_graph, lo
     assert "doctor_conclusion" in header
 
 
-def test_analysis_page_wires_batch_csv_download_action():
+def test_analysis_page_wires_batch_excel_download_action():
     template = Path("skin_cancer/webapp/templates/index.html").read_text(
         encoding="utf-8"
     )
@@ -286,16 +286,18 @@ def test_analysis_page_wires_batch_csv_download_action():
         encoding="utf-8"
     )
 
-    assert 'id="exportCsvBtn"' in template
-    assert 'const exportCsvBtn = $("exportCsvBtn")' in javascript
-    assert "exportCsvBtn.disabled = false" in javascript
-    assert "exportCsvBtn.disabled = true" in javascript
-    assert "`/api/upload-batches/${currentBatchId}/analysis.csv`" in javascript
+    assert 'id="exportExcelBtn"' in template
+    assert "Xuất Excel" in template
+    assert 'const exportExcelBtn = $("exportExcelBtn")' in javascript
+    assert "exportExcelBtn.disabled = false" in javascript
+    assert "exportExcelBtn.disabled = true" in javascript
+    assert "`/api/upload-batches/${currentBatchId}/analysis.xlsx`" in javascript
+    assert "await response.blob()" in javascript
 
     analyze_function = javascript.split(
         "async function analyzeCaseImage(caseImageId) {", 1
     )[1].split("// ============================================================", 1)[0]
     assert (
-        "resetActionState();\n\n  exportCsvBtn.disabled = !currentBatchId;"
+        "resetActionState();\n\n  exportExcelBtn.disabled = !currentBatchId;"
         in analyze_function
     )

@@ -173,7 +173,7 @@ const measureBtn = $("measureBtn");
 
 const exportPdfBtn = $("exportPdfBtn");
 
-const exportCsvBtn = $("exportCsvBtn");
+const exportExcelBtn = $("exportExcelBtn");
 
 const downloadPdfBtn = $("downloadPdfBtn");
 
@@ -1810,7 +1810,7 @@ async function uploadBatch() {
 
   currentBatchId = data.batch_id;
 
-  exportCsvBtn.disabled = false;
+  exportExcelBtn.disabled = false;
 
   batchStatus.hidden = false;
 
@@ -1950,7 +1950,7 @@ async function analyzeCaseImage(caseImageId) {
 
   resetActionState();
 
-  exportCsvBtn.disabled = !currentBatchId;
+  exportExcelBtn.disabled = !currentBatchId;
 
   emptyState.classList.add("hidden");
 
@@ -2300,18 +2300,43 @@ exportPdfBtn.addEventListener("click", async () => {
 });
 
 // ============================================================
-// EXPORT BATCH ANALYSIS CSV
+// EXPORT BATCH ANALYSIS EXCEL
 // ============================================================
 
-exportCsvBtn.addEventListener("click", () => {
+exportExcelBtn.addEventListener("click", async () => {
   if (!currentBatchId) {
     return;
   }
 
-  requireDoctor();
+  try {
+    requireDoctor();
+    exportExcelBtn.disabled = true;
+    exportExcelBtn.textContent = "Đang tạo Excel...";
 
-  window.location.href =
-    `/api/upload-batches/${currentBatchId}/analysis.csv`;
+    const response = await fetch(
+      `/api/upload-batches/${currentBatchId}/analysis.xlsx`,
+      { credentials: "same-origin" },
+    );
+    if (!response.ok) {
+      const data = await responseJson(response);
+      throw new Error(getErrorMessage(data, "Không tạo được file Excel."));
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `DermaScan_Batch_${currentBatchId}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    exportExcelBtn.disabled = !currentBatchId;
+    exportExcelBtn.textContent = "Xuất Excel";
+  }
 });
 
 // ============================================================
@@ -2586,7 +2611,7 @@ function resetActionState() {
 
   exportPdfBtn.disabled = true;
 
-  exportCsvBtn.disabled = true;
+  exportExcelBtn.disabled = true;
 
   downloadPdfBtn.disabled = true;
 

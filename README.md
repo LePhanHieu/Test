@@ -12,7 +12,8 @@ User/Doctor/Admin.
 - Database/API: SQLite + Flask-SQLAlchemy + Flask-Migrate.
 - Batch upload: JPG/JPEG/PNG/WEBP, UUID filename, tối đa 20 ảnh/batch,
   10 MiB/file và 25 triệu pixel/ảnh, trạng thái từng ảnh, CSV upload và CSV
-  kết quả phân tích sinh động từ database.
+  kết quả phân tích sinh động từ database; hỗ trợ Excel nhúng ảnh gốc và
+  Grad-CAM.
 - Measurement: OpenCV threshold/morphology/contour/bounding box, chỉ dùng đơn vị
   pixel khi chưa có calibration.
 - Report: ReportLab, dữ liệu thật từ database, version `v1`, `v2`, `v3`, file
@@ -106,6 +107,7 @@ Case của mình; `DOCTOR` chỉ truy cập Case được giao; `ADMIN` có ph�
 | POST | `/api/cases/<case_id>/upload-batch` | Doctor/Admin |
 | GET | `/api/upload-batches/<batch_id>/csv` | Doctor phụ trách/Admin |
 | GET | `/api/upload-batches/<batch_id>/analysis.csv` | Doctor phụ trách/Admin |
+| GET | `/api/upload-batches/<batch_id>/analysis.xlsx` | Doctor phụ trách/Admin |
 | POST | `/api/analyses/<analysis_id>/measure` | Doctor phụ trách/Admin |
 | GET | `/api/analyses/<analysis_id>/contour` | Theo quyền Case |
 | POST | `/api/cases/<case_id>/reports` | Doctor phụ trách/Admin |
@@ -135,6 +137,14 @@ Các nhóm cột gồm:
 lâm sàng chỉ nằm trong `doctor_conclusion`. CSV không chứa đường dẫn file nội bộ,
 email bệnh nhân hoặc thông tin xác thực; mọi trường text đều được vô hiệu hóa tiền
 tố công thức bảng tính.
+
+#### Excel ảnh phân tích theo batch
+
+Endpoint `/api/upload-batches/<batch_id>/analysis.xlsx` tạo workbook một sheet
+`ẢNH TRONG BATCH`, nhúng trực tiếp thumbnail ảnh gốc và Grad-CAM đang tồn tại.
+File dùng dữ liệu Analysis/AnalysisResult mới nhất đã lưu, không chạy lại AI.
+Ảnh thiếu hoặc hỏng được ghi trạng thái trong ô tương ứng mà không làm thất bại
+toàn bộ batch. Endpoint CSV hiện có vẫn được giữ để tương thích.
 
 ### Slides và site settings
 
@@ -169,7 +179,7 @@ Khi chạy `skin_cancer.webapp.app`, ngoài các API database còn có:
 - Python 3.11 hoặc 3.12.
 - Database/API: Flask 3.1, Flask-SQLAlchemy, SQLAlchemy, Flask-Migrate,
   Flask-Login, Flask-WTF, Flask-Mail, Flask-Limiter, python-dotenv, pandas,
-  OpenCV, ReportLab.
+  OpenCV, ReportLab, openpyxl và Pillow.
 - AI/training: PyTorch, torchvision, timm, NumPy, Pillow, pytorch-grad-cam,
   scikit-learn, matplotlib, seaborn, gradio, tqdm.
 - Test: pytest.

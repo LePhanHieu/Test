@@ -19,6 +19,7 @@ from ..services.access import (
     visible_case_or_404,
 )
 from ..services.analysis_csv import AnalysisCsvService
+from ..services.analysis_excel import AnalysisExcelService
 from ..services.batch_upload import (
     BatchUploadService,
 )
@@ -266,5 +267,40 @@ def download_batch_analysis_csv(batch_id):
         as_attachment=True,
         download_name=(
             f"batch_{batch.id}_analysis.csv"
+        ),
+    )
+
+
+@bp.get(
+    "/upload-batches/"
+    "<int:batch_id>/analysis.xlsx"
+)
+@require_roles("ADMIN", "DOCTOR")
+def download_batch_analysis_excel(batch_id):
+    batch = db.session.get(
+        UploadBatch,
+        batch_id,
+    )
+
+    if not batch:
+        abort(404)
+
+    visible_case_or_404(
+        batch.case_id
+    )
+
+    return send_file(
+        BytesIO(
+            AnalysisExcelService(
+                current_app
+            ).render(batch)
+        ),
+        mimetype=(
+            "application/vnd.openxmlformats-"
+            "officedocument.spreadsheetml.sheet"
+        ),
+        as_attachment=True,
+        download_name=(
+            f"batch_{batch.id}_analysis.xlsx"
         ),
     )

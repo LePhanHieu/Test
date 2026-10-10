@@ -4,10 +4,7 @@ import csv
 import io
 from datetime import timezone
 
-from sqlalchemy.orm import selectinload
-
-from ..extensions import db
-from ..models import Analysis, CaseImage, DoctorReview, UploadBatch
+from .analysis_export_data import binary_label, latest, load_batch_graph
 from .batch_upload import spreadsheet_safe
 
 CLASS_NAMES = ("MEL", "NV", "BCC", "AK", "BKL", "DF", "VASC", "SCC")
@@ -49,24 +46,12 @@ CSV_COLUMNS = (
 )
 
 
-def _latest(records):
-    return max(records, key=lambda record: record.id, default=None)
-
-
 def _timestamp(value):
     if value is None:
         return ""
     if value.tzinfo is not None:
         value = value.astimezone(timezone.utc).replace(tzinfo=None)
     return f"{value.isoformat()}Z"
-
-
-def _binary_label(value):
-    if value == 0:
-        return "BENIGN"
-    if value == 1:
-        return "MALIGNANT"
-    return ""
 
 
 def _public_analysis_error(value):
@@ -76,27 +61,9 @@ def _public_analysis_error(value):
 class AnalysisCsvService:
     """Serialize the latest persisted analysis state for one upload batch."""
 
-    @staticmethod
-    def _load_batch(batch_id):
-        image_analyses = selectinload(UploadBatch.images).selectinload(
-            CaseImage.analyses
-        )
-        statement = (
-            db.select(UploadBatch)
-            .where(UploadBatch.id == batch_id)
-            .options(
-                selectinload(UploadBatch.case),
-                image_analyses.selectinload(Analysis.results),
-                image_analyses.selectinload(Analysis.reviews).selectinload(
-                    DoctorReview.doctor
-                ),
-            )
-        )
-        return db.session.scalar(statement)
-
     @classmethod
     def rows(cls, batch):
-        batch = cls._load_batch(batch.id)
+        batch = load_batch_graph(batch.id)
         rows = [cls._image_row(batch, image) for image in batch.images]
         rows.extend(
             cls._rejected_rows(
@@ -130,7 +97,7 @@ class AnalysisCsvService:
             uploaded_at=_timestamp(image.uploaded_at),
         )
 
-        analysis = _latest(image.analyses)
+        analysis = latest(image.analyses)
         if analysis is None:
             return row
 
@@ -151,7 +118,7 @@ class AnalysisCsvService:
             bbox_height=analysis.bbox_height,
         )
 
-        result = _latest(analysis.results)
+        result = latest(analysis.results)
         if result is not None:
             probabilities = (
                 result.class_probabilities
@@ -161,7 +128,7 @@ class AnalysisCsvService:
             row.update(
                 model_name=result.model_name,
                 inference_time_ms=result.inference_time_ms,
-                ai_binary_result=_binary_label(result.binary_result),
+                ai_binary_result=binary_label(result.binary_result),
                 ai_binary_probability=result.binary_probability,
                 predicted_class=result.predicted_class,
                 predicted_probability=result.predicted_probability,
@@ -174,7 +141,7 @@ class AnalysisCsvService:
                 }
             )
 
-        review = _latest(analysis.reviews)
+        review = latest(analysis.reviews)
         if review is not None:
             row.update(
                 review_status=review.review_status,

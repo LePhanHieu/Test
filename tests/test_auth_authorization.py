@@ -43,12 +43,25 @@ def test_doctor_cannot_read_another_doctors_case(client, users, case_graph, logi
     assert client.get(
         f"/api/upload-batches/{case_graph['other']['batch_id']}/analysis.csv"
     ).status_code == 404
+    assert client.get(
+        f"/api/upload-batches/{case_graph['other']['batch_id']}/analysis.xlsx"
+    ).status_code == 404
 
 
 def test_patient_cannot_download_batch_analysis_csv(client, users, case_graph, login):
     login("patient")
     response = client.get(
         f"/api/upload-batches/{case_graph['own']['batch_id']}/analysis.csv"
+    )
+    assert response.status_code == 403
+
+
+def test_patient_cannot_download_batch_analysis_excel(
+    client, users, case_graph, login
+):
+    login("patient")
+    response = client.get(
+        f"/api/upload-batches/{case_graph['own']['batch_id']}/analysis.xlsx"
     )
     assert response.status_code == 403
 
