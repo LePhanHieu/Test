@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 
 from flask import (
@@ -17,10 +18,10 @@ from ..services.access import (
     require_roles,
     visible_case_or_404,
 )
+from ..services.analysis_csv import AnalysisCsvService
 from ..services.batch_upload import (
     BatchUploadService,
 )
-
 
 bp = Blueprint(
     "uploads",
@@ -235,5 +236,35 @@ def download_batch_csv(batch_id):
         as_attachment=True,
         download_name=(
             f"batch_{batch.id}.csv"
+        ),
+    )
+
+
+@bp.get(
+    "/upload-batches/"
+    "<int:batch_id>/analysis.csv"
+)
+@require_roles("ADMIN", "DOCTOR")
+def download_batch_analysis_csv(batch_id):
+    batch = db.session.get(
+        UploadBatch,
+        batch_id,
+    )
+
+    if not batch:
+        abort(404)
+
+    visible_case_or_404(
+        batch.case_id
+    )
+
+    return send_file(
+        BytesIO(
+            AnalysisCsvService.render(batch)
+        ),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=(
+            f"batch_{batch.id}_analysis.csv"
         ),
     )

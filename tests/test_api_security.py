@@ -1,10 +1,13 @@
-import csv
 import ast
+import csv
+import io
 from pathlib import Path
 
 import pytest
 
-from skin_cancer.webapp.services.batch_upload import BatchUploadService, CSV_COLUMNS
+from skin_cancer.webapp.extensions import db
+from skin_cancer.webapp.models import DoctorReview
+from skin_cancer.webapp.services.batch_upload import CSV_COLUMNS, BatchUploadService
 
 
 @pytest.mark.parametrize("prefix", ["=", "+", "-", "@", "\t", "\r"])
@@ -19,6 +22,33 @@ def test_csv_export_neutralizes_spreadsheet_formula_prefixes(tmp_path, prefix):
         exported = next(csv.DictReader(handle))
     assert exported["filename"].startswith("'")
     assert exported["filename"][1:] == row["filename"]
+
+
+@pytest.mark.parametrize("prefix", ["=", "+", "-", "@", "\t", "\r"])
+def test_analysis_csv_neutralizes_spreadsheet_formula_prefixes(
+    app, client, users, case_graph, login, prefix
+):
+    record = case_graph["own"]
+    with app.app_context():
+        review = DoctorReview(
+            case_id=record["case_id"],
+            analysis_id=record["analysis_id"],
+            doctor_id=users["doctor"],
+            doctor_conclusion=f"{prefix}unsafe",
+            review_status="REVIEWED",
+        )
+        db.session.add(review)
+        db.session.commit()
+
+    login("doctor")
+    response = client.get(
+        f"/api/upload-batches/{record['batch_id']}/analysis.csv"
+    )
+
+    assert response.status_code == 200
+    decoded = response.data.decode("utf-8-sig")
+    exported = next(csv.DictReader(io.StringIO(decoded)))
+    assert exported["doctor_conclusion"] == f"'{prefix}unsafe"
 
 
 @pytest.mark.parametrize(
