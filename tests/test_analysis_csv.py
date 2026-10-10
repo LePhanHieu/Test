@@ -1,6 +1,7 @@
 import csv
 import io
 from datetime import datetime, timezone
+from pathlib import Path
 
 from skin_cancer.webapp.extensions import db
 from skin_cancer.webapp.models import (
@@ -222,3 +223,18 @@ def test_analysis_csv_empty_batch_has_headers(app, client, users, case_graph, lo
     header = response.data.decode("utf-8-sig").splitlines()[0]
     assert "ai_binary_result" in header
     assert "doctor_conclusion" in header
+
+
+def test_analysis_page_wires_batch_csv_download_action():
+    template = Path("skin_cancer/webapp/templates/index.html").read_text(
+        encoding="utf-8"
+    )
+    javascript = Path("skin_cancer/webapp/static/js/main.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'id="exportCsvBtn"' in template
+    assert 'const exportCsvBtn = $("exportCsvBtn")' in javascript
+    assert "exportCsvBtn.disabled = false" in javascript
+    assert "exportCsvBtn.disabled = true" in javascript
+    assert "`/api/upload-batches/${currentBatchId}/analysis.csv`" in javascript

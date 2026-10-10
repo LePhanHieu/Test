@@ -173,6 +173,8 @@ const measureBtn = $("measureBtn");
 
 const exportPdfBtn = $("exportPdfBtn");
 
+const exportCsvBtn = $("exportCsvBtn");
+
 const downloadPdfBtn = $("downloadPdfBtn");
 
 const sendEmailBtn = $("sendEmailBtn");
@@ -1808,6 +1810,8 @@ async function uploadBatch() {
 
   currentBatchId = data.batch_id;
 
+  exportCsvBtn.disabled = false;
+
   batchStatus.hidden = false;
 
   batchStatusText.textContent =
@@ -2294,6 +2298,21 @@ exportPdfBtn.addEventListener("click", async () => {
 });
 
 // ============================================================
+// EXPORT BATCH ANALYSIS CSV
+// ============================================================
+
+exportCsvBtn.addEventListener("click", () => {
+  if (!currentBatchId) {
+    return;
+  }
+
+  requireDoctor();
+
+  window.location.href =
+    `/api/upload-batches/${currentBatchId}/analysis.csv`;
+});
+
+// ============================================================
 // DOWNLOAD PDF
 // ============================================================
 
@@ -2564,6 +2583,8 @@ function resetActionState() {
   measureBtn.disabled = true;
 
   exportPdfBtn.disabled = true;
+
+  exportCsvBtn.disabled = true;
 
   downloadPdfBtn.disabled = true;
 
