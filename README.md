@@ -11,7 +11,8 @@ User/Doctor/Admin.
 
 - Database/API: SQLite + Flask-SQLAlchemy + Flask-Migrate.
 - Batch upload: JPG/JPEG/PNG/WEBP, UUID filename, tối đa 20 ảnh/batch,
-  10 MiB/file và 25 triệu pixel/ảnh, trạng thái từng ảnh, CSV Pandas.
+  10 MiB/file và 25 triệu pixel/ảnh, trạng thái từng ảnh, CSV upload và CSV
+  kết quả phân tích sinh động từ database.
 - Measurement: OpenCV threshold/morphology/contour/bounding box, chỉ dùng đơn vị
   pixel khi chưa có calibration.
 - Report: ReportLab, dữ liệu thật từ database, version `v1`, `v2`, `v3`, file
@@ -104,12 +105,36 @@ Case của mình; `DOCTOR` chỉ truy cập Case được giao; `ADMIN` có ph�
 |---|---|---|
 | POST | `/api/cases/<case_id>/upload-batch` | Doctor/Admin |
 | GET | `/api/upload-batches/<batch_id>/csv` | Doctor phụ trách/Admin |
+| GET | `/api/upload-batches/<batch_id>/analysis.csv` | Doctor phụ trách/Admin |
 | POST | `/api/analyses/<analysis_id>/measure` | Doctor phụ trách/Admin |
 | GET | `/api/analyses/<analysis_id>/contour` | Theo quyền Case |
 | POST | `/api/cases/<case_id>/reports` | Doctor phụ trách/Admin |
 | GET | `/api/reports/<report_id>` | Theo quyền Case |
 | GET | `/api/reports/<report_id>/download` | Theo quyền Case |
 | POST | `/api/reports/<report_id>/email` | Doctor phụ trách/Admin |
+
+#### CSV kết quả phân tích theo batch
+
+Endpoint `/api/upload-batches/<batch_id>/analysis.csv` tạo file từ trạng thái
+database tại thời điểm tải xuống. Mỗi dòng là một ảnh trong batch; file upload bị
+từ chối vẫn có dòng trạng thái/lỗi riêng. Với mỗi ảnh, hệ thống xuất Analysis,
+AnalysisResult và DoctorReview mới nhất. Nếu bác sĩ chưa đánh giá, các cột review
+được để trống.
+
+Các nhóm cột gồm:
+
+- Định danh/upload: batch, Case, ảnh, tên file, trạng thái, lỗi và thời gian upload.
+- AI: `ai_binary_result` (`BENIGN`/`MALIGNANT`), xác suất nhị phân, lớp dự đoán,
+  xác suất tám lớp `MEL/NV/BCC/AK/BKL/DF/VASC/SCC`, model và inference time.
+- Đo lường: diện tích/chu vi theo pixel, tỷ lệ tổn thương và bounding box.
+- Review bác sĩ: trạng thái, kết luận, ghi chú, khuyến nghị, người đánh giá và
+  thời điểm cập nhật.
+- Vòng đời phân tích: trạng thái, lỗi, thời điểm bắt đầu/kết thúc và tạo kết quả.
+
+`ai_binary_result` là dự đoán của AI, không phải chẩn đoán của bác sĩ. Kết luận
+lâm sàng chỉ nằm trong `doctor_conclusion`. CSV không chứa đường dẫn file nội bộ,
+email bệnh nhân hoặc thông tin xác thực; mọi trường text đều được vô hiệu hóa tiền
+tố công thức bảng tính.
 
 ### Slides và site settings
 
