@@ -69,6 +69,10 @@ def _binary_label(value):
     return ""
 
 
+def _public_analysis_error(value):
+    return "Phân tích thất bại" if value else ""
+
+
 class AnalysisCsvService:
     """Serialize the latest persisted analysis state for one upload batch."""
 
@@ -94,7 +98,12 @@ class AnalysisCsvService:
     def rows(cls, batch):
         batch = cls._load_batch(batch.id)
         rows = [cls._image_row(batch, image) for image in batch.images]
-        rows.extend(cls._rejected_rows(batch))
+        rows.extend(
+            cls._rejected_rows(
+                batch,
+                {image.id for image in batch.images},
+            )
+        )
         return rows
 
     @classmethod
@@ -128,7 +137,9 @@ class AnalysisCsvService:
         row.update(
             analysis_id=analysis.id,
             analysis_status=analysis.status,
-            analysis_error_message=analysis.error_message or "",
+            analysis_error_message=_public_analysis_error(
+                analysis.error_message
+            ),
             analysis_started_at=_timestamp(analysis.started_at),
             analysis_completed_at=_timestamp(analysis.completed_at),
             lesion_area_px=analysis.lesion_area_px,
@@ -176,10 +187,13 @@ class AnalysisCsvService:
         return row
 
     @staticmethod
-    def _rejected_rows(batch):
+    def _rejected_rows(batch, represented_image_ids):
         rows = []
         for item in batch.item_results or []:
-            if item.get("status") == "UPLOADED":
+            if (
+                item.get("status") == "UPLOADED"
+                or item.get("case_image_id") in represented_image_ids
+            ):
                 continue
             row = {column: "" for column in CSV_COLUMNS}
             row.update(

@@ -1,6 +1,7 @@
 import csv
 import io
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 
 from skin_cancer.webapp.extensions import db
@@ -203,6 +204,58 @@ def test_analysis_csv_includes_rejected_batch_items(
     assert rejected["analysis_id"] == ""
 
 
+def test_analysis_csv_does_not_duplicate_rejected_case_image(
+    client, case_graph, login
+):
+    login("doctor")
+    csrf_token = client.get("/api/auth/csrf").get_json()["csrf_token"]
+    upload = client.post(
+        f"/api/cases/{case_graph['own']['case_id']}/upload-batch",
+        data={
+            "images": (
+                BytesIO(b"not an image"),
+                "broken.exe",
+                "application/octet-stream",
+            )
+        },
+        headers={"X-CSRFToken": csrf_token},
+        content_type="multipart/form-data",
+    )
+    assert upload.status_code == 201
+    payload = upload.get_json()
+    assert payload["failed_count"] == 1
+
+    response = client.get(CSV_URL.format(batch_id=payload["batch_id"]))
+    rows = csv_rows(response)
+
+    assert len(rows) == 1
+    assert rows[0]["original_filename"] == "broken.exe"
+    assert rows[0]["image_status"] == "FAILED"
+    assert rows[0]["image_id"]
+
+
+def test_analysis_csv_redacts_internal_analysis_error_details(
+    app, client, case_graph, login
+):
+    record = case_graph["own"]
+    private_path = "/srv/private/instance/gradcam/analysis_1.png"
+    with app.app_context():
+        analysis = db.session.get(Analysis, record["analysis_id"])
+        analysis.status = "FAILED"
+        analysis.error_message = (
+            "[Errno 13] Permission denied: "
+            f"'{private_path}'"
+        )
+        db.session.commit()
+
+    login("doctor")
+    response = client.get(CSV_URL.format(batch_id=record["batch_id"]))
+    row = csv_rows(response)[0]
+
+    assert row["analysis_error_message"] == "Phân tích thất bại"
+    assert private_path not in response.data.decode("utf-8-sig")
+
+
 def test_analysis_csv_empty_batch_has_headers(app, client, users, case_graph, login):
     with app.app_context():
         batch = UploadBatch(
@@ -238,3 +291,11 @@ def test_analysis_page_wires_batch_csv_download_action():
     assert "exportCsvBtn.disabled = false" in javascript
     assert "exportCsvBtn.disabled = true" in javascript
     assert "`/api/upload-batches/${currentBatchId}/analysis.csv`" in javascript
+
+    analyze_function = javascript.split(
+        "async function analyzeCaseImage(caseImageId) {", 1
+    )[1].split("// ============================================================", 1)[0]
+    assert (
+        "resetActionState();\n\n  exportCsvBtn.disabled = !currentBatchId;"
+        in analyze_function
+    )

@@ -1950,6 +1950,8 @@ async function analyzeCaseImage(caseImageId) {
 
   resetActionState();
 
+  exportCsvBtn.disabled = !currentBatchId;
+
   emptyState.classList.add("hidden");
 
   resultsState.classList.add("hidden");
